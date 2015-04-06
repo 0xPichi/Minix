@@ -19,6 +19,10 @@ El editor de textos Vi tiene dos modos el modo de edición y el modo comandos lo
 	- :lineaquebuscas -> Busca la linea lineaquebuscas en el fichero.
 	- G -> Baja hasta el final del fichero.
 	- Ctrl+g -> Muestra el nombre del fichero entre otras cosas.
+	- o -> Coloca el cursor en la line inferior a la acrual.
+	- O -> Coloca el cursor en la linea posterior a la actual.
+	- A -> Coloca el sursor al final de la linea.
+	- % -> Con el cursor colocado en una llave o parentesis desplaza el cursor hasta la llave o parentesis que lo cierran.
 
 Para movernos por el texto se utilizan las flechas de direccion del teclado en el modo comando, en caso de no funcionar los cursores puede ser debido a que el BloqNum esta activado, es importante asegurarse de que esté desactivado antes de comenzar a trabajar.
 
@@ -209,7 +213,29 @@ Seguimiento completo de una llamada fork();
     Para realizar la tarea de cambiar el quantum tenemos que crear una nueva llamada al sistema, ya que no podemos modificar una variable de la capa del kernel desde la de usuario. En vez de crear una llamada al sistema desde cero, utilizaremos el distribuidor creado en la llamada ASOPS (creada en la practica anterior), desde el que redirigiremos a la función cambiaQ que crearemos en clock.c cuando llega la llamada CAMBIAQ. 
     IMPORTANTE: Nos prevenimos de no usar ni la constante cuantificadora PRIVATE ni FORWARD en la definición de la función ni en la declaración del prototipo de cambiaQ  en clock.c, ya que a esta función se la llamada desde este fichero system.c y estos cuantificadores impiden el acceso a funciones desde fuera del archivo en el que estan escritas, ya que son una mascara de static (en C significa que esa variable/funcion no es accesible desde fuera del fichero).
 
-*************************************MIERCOLES 18/03/2015********************************************************************
+	*************************************MARTES 24/3/2015***************************PRACTICA E*****************************************
 
-	
+	DUDA: ¿Cómo imprimir las tablas de segmentos de las tareas del sistema si no estan en el PCB del gestor de memoria?
+	EXPLICACION:
 
+	Creamos la funcion "memLibre()" dado que la tabla de huecos esta definida como static en el fichero alloc.c, sera en este fichero donde crearemos la función. 
+
+	La tarea de la funcion es recorrer la lista enlazada de hole_head imprimiendo la base y el tamaño del hueco.
+
+			while( hp != NIL_HOLE) {
+
+				/*Impresion de los datos*/
+				hp = hp->h_next;
+			}
+
+
+	Realizamos algunas pruebas para comprobar el funcionamiento de la tabala de huecos:
+
+		1.-Colocando la llamada en mm_init(), antes de la llamada a mem_init(), el resultado fue la tabla vacia, dado que no se habia ejecutado mem_init()(Es donde se llena la tabla de huecos).
+
+		2.-Colocando la llamada despues de la llamada a mem_init(), el resultado en este caso es una tabla con dos entradas.
+
+		3.-Colocando la llamada en la funcion mem_init(), en el final del bucle el cual pide al kernel la informacion de que espacios de memoria estan sin utilizar para asi poder liberarlos, el resultado fue la evolucion de la tabla(Cada iteraccion del bucle era una nueva entrada en la tabla de huecos).
+
+		Para la impresion de las tablas de segmentos de los procesos de usuario creamos una nueva funcion llamada tabSeg(), la cual se encuentra en /usr/src/mm/utility.c, dado que ya no nos encontramos en el nucleo la estructura de datos que debemos utilizar es el PCB del gestor de memoria (mproc[NR_PROCS]), la cual esta definida en /usr/src/mm/mproc.h.
+		La tarea de esta funcion es recorrer las entradas del PCB del gestor de memoria e imprimir la informacion correspondiente a la tabla de segmentos de cada una de las entradas.
