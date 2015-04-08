@@ -216,7 +216,9 @@ Seguimiento completo de una llamada fork();
 	*************************************MARTES 24/3/2015***************************PRACTICA E*****************************************
 
 	DUDA: ¿Cómo imprimir las tablas de segmentos de las tareas del sistema si no estan en el PCB del gestor de memoria?
-	EXPLICACION:
+	EXPLICACION: Dado que las tareas de sistema no se almacenan en el PCB del gestor de memoria devemos hacer la llamada al sistema en el kernel para utilizar su PCB en el cual siq ue se almacenan las tareas del sistema.
+
+	Recorremos el vector p_proc[] en el cual se almacenan tanto los procesos de usuario, procesos de servidores y tareas dle sistema, dado que sabemos que las tareas de sistema se almacenan en primer lugar utilizaremos la constante NR_TASKS para controlar el bucle iterativo que recorrera el PCB, accedemos al campo p_map[] de cada  proceso para imprimir la tabla de segmentos del mismo.
 
 	Creamos la funcion "memLibre()" dado que la tabla de huecos esta definida como static en el fichero alloc.c, sera en este fichero donde crearemos la función. 
 
@@ -239,3 +241,19 @@ Seguimiento completo de una llamada fork();
 
 		Para la impresion de las tablas de segmentos de los procesos de usuario creamos una nueva funcion llamada tabSeg(), la cual se encuentra en /usr/src/mm/utility.c, dado que ya no nos encontramos en el nucleo la estructura de datos que debemos utilizar es el PCB del gestor de memoria (mproc[NR_PROCS]), la cual esta definida en /usr/src/mm/mproc.h.
 		La tarea de esta funcion es recorrer las entradas del PCB del gestor de memoria e imprimir la informacion correspondiente a la tabla de segmentos de cada una de las entradas.
+
+		*********************************MIERCOLES 8/04/2015***********************************************************************
+
+		Cansados de tener que acceder continuamente a /usr/src/tools para realizar la compilacion del nucleo en las diferentes pruebas que hemos hecho decidios crear un script el cual nos ahorrara las molestias
+
+		compilak:
+
+			#!bin/sh
+			cd /usr/src/tools
+			make hdboot
+
+		Una vez escrito basta con moverlo a la carpeta /bin para poder ejecutarlo libremente, indagando un poco acerca de los scripts descubrimos que hay varias formas para ejecutarlos:
+
+			Especificando el interprete: sh compilak
+			Refiriendose al directorio en el que estamos con el interptrete predeterminado de nuestro usuario: ./compilak
+			De manera global: compoilak
