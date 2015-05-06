@@ -283,3 +283,35 @@ Seguimiento completo de una llamada fork();
 		·También podemos observar que la tabla de huecos a cambiado empezando el ultimo hueco de la tabla justo al final del proceso hijo.
 
 		·DUDA: Nos llama la atención que el proceso hijo haya sido alojado en el ultimo hueco y no en el primero, se nos ocurre la posibilidad de que el proceso no tuviera suficiente espacio en el resto de huecos, pero esto no concuerda con los resultado que hemos obtenido.
+
+	****************************************VIERNES 17/04/2015********PRACTICA LIBRE***************************************************************
+
+	Compactación de memoria:
+
+	Analisis de los problemas que se nos van a presentar:
+		· Cómo mover la memoria byte a byte 
+		· Cómo mantener la coherencia del sistema durante la compactación
+		· Algoritmo que vamos a usar para hacer los movimientos
+		. Cuándo se va a hacer la compctación (a traves de un comando, cunado se llene memoria...)
+		· Segmentos de texto compartidos
+
+	**************************************MIERCOLES 22/04/2015*************************************************************************
+
+	Para realizar la compactación de memoria es evidente que vamos a necesitar código capaz de mover memoria física de unas direcciones a otras para poder liberar y ocupar huecos. Este código debe estar escrito en lenguaje ensamblador ya que es con el que podemos mover direcciones fisicas y ademas, ya que es una operación delicada y frecuente, se debe hacer en el menor numero de tiempo posibe.
+	En vez de implementar nosotros mismos esta función, utilizaremos la que usa Minix para todas sus tareas de este estilo: phys_copy. Ésta está definida en los ficheros klib386.s y klib88.s (dependeindo de sobre que arquitectura este ejecutandose Minix utilizará una u otra) del kernel.
+
+	Comenzaremos analizando el codigo de esta función (phys_copy) en detalle, ya que será la base de todo y podremos practicar con el ensamblador de la arquitectura Intel x86 (elegimos esta porque es el que ya conocemos):
+
+		Este codigo usa los registros de cadena del procesador (esi y edi) que almacenan direcciones de memoria. Estos registros fueron añadidos para agilizar las operaciones consecutivas sobre vectores, ya que las instrucciones que los modifican mueven el dato contenido en la dirección e incrementan/decrementan los punteros automaticamente. Estas instrucciones incrementan o decrementan esi y edi en funcion del bit de dirección (DB en el registro EFLAGS), por eso utiliza la instrucción cld, que pone a 0 este bit indicando que debe incrementar los punteros. Las instrucciones que modifican esi actuan sobre el segmento de datos (ds) y las que modifican edi sobre el segmento extra (es), pero como queremos actuar sobre el ds en el dos casos, mete en es el selector de ds (no se puede hacer mov entre dos registros de segmento por lo que usa dos instrucciones).
+		A continuación saca los argumentos pasados desde los programas C de la pila (tener en cuenta que por motivos historicos los compiladores de C meten los registros en orden inverso en la pila). Usa PC_ARGS ya que previamente ha salvado los valores de tres registros de 32 bits (4 bytes) en la pila, y usa ese valor de 16 para saltarlos y poder direccionar los argumentos reales.
+		Si el numero de bytes a mover es menor de 10 se perdería tiempo intentando alinear el origen, por lo que se hace directamente el transaldo byte a byte. Si es mayor que 10 entonces primero determina cuantos bytes debe "quitar" para quede un numero par de bytes, los mueve y despues mueve todos los que puede de los restantes de 32 bits en 32 bits, en vez de cada 8 (sabe cuantos puede mover porque divide el numero de bytes restante entre 4 despanzado 2 bits hacia la derecha) y finaliza moviendo de nuevo byte a byte los que quedan (esto puede ocurrir si los bytes resatntes no son multiplo de 4. Pueden ser como mucho 2 bytes)
+
+	************************************SABADO 25/04/2015************************************************************************************
+
+	Nuestro primer paso para realizar el compactador será realizar una rutina que sea capaz de mover el segmento de datos de un proceso a otra zona de memoria libre. Para ello necesitaremos una funcion que nos de una zona de memoria libre y una llamada al sistema que pueda ejecutar la funcion phys_copy para los parametros dados. 
+		· La función que nos da la zona de memoria libre es alloc_mem, escrita en alloc.c. Con esta función, para un tamaño de memoria dado (en clicks), obtenemos la dirección de inicio (en clicks) de la zona de memoria libre que podemos usar. Ésta usa el algoritmo first fit para buscar el hueco.
+
+		· Para usar phys_copy() podemos usar una llamada al sistema predefinida en Minix: SYS_COPY. Ésta llamada se realiza a traves de la función sys_copy() implementada en /usr/src/lib/syslib/sys_copy.c. Vemos en el codigo que esta función simplemente crea un mensaje con los parámetros para phys_copy y realiza una _taskcall a SYSCALL (como todas las llamadas al sistema que hemos realizado hasta ahora). Los parametros que pasamos a esta funcion pueden ser interpretados de dos formas: 1.- Si usamos ABS donde deberiamos indicar el numero de proceso significa que vamos a indicar la dirección absoluta de la zona de memoria que vamos a mover o en la que vamos a recibir 2.- Podemos indicar el numero de proceso y la dirección virtual de memoria del segmento de ese proceso que queremos mover, para que la implementacion de sys_copy calcule las direcciones absolutas.
+
+
+
