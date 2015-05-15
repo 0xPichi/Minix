@@ -313,6 +313,11 @@ Seguimiento completo de una llamada fork();
 
 		· Para usar phys_copy() podemos usar una llamada al sistema predefinida en Minix: SYS_COPY. Ésta llamada se realiza a traves de la función sys_copy() implementada en /usr/src/lib/syslib/sys_copy.c. Vemos en el codigo que esta función simplemente crea un mensaje con los parámetros para phys_copy y realiza una _taskcall a SYSCALL (como todas las llamadas al sistema que hemos realizado hasta ahora). Los parametros que pasamos a esta funcion pueden ser interpretados de dos formas: 1.- Si usamos ABS donde deberiamos indicar el numero de proceso significa que vamos a indicar la dirección absoluta de la zona de memoria que vamos a mover o en la que vamos a recibir 2.- Podemos indicar el numero de proceso y la dirección virtual de memoria del segmento de ese proceso que queremos mover, para que la implementacion de sys_copy calcule las direcciones absolutas.
 
+			En nuestro caso el uso de sys_copy seria algo asi:
+				sys_copy(ABS, 0, src_abs, ABS, 0, dst_abs, lenght);
+
+			Siendo "src_abs" y "dst_abs" las direcciones origen y destino absolutas respectivamente.
+
 		La funcion recibe tres parametros los cuales indican la dirección fuente de los datos, la direccion destino de dichos datos y el numero de bytes a copiar respectivamente. Todos estos parametros son del tipo unsigned long int.
 
 	Pasemos a explicar el codigo:
@@ -326,8 +331,6 @@ Seguimiento completo de una llamada fork();
 		push edi
 		push es
 
-	Lo primero que realiza esta funcion es guardar los parametros en la variable PC_ARGS, a continuacion salva los registros que se van a utilizar metiendolos en la pila.
-
 	mov eax, FLAT_DS_SELECTOR
 	mov es, ax
 
@@ -335,12 +338,12 @@ Seguimiento completo de una llamada fork();
 	mov edi, PC_ARGS+4(esp)
 	mov eax, PC_ARGS+4+4(esp)
 
-	A continuacion establece los selectores de segmentos y mueve a los registrops esi, edi y eax lso parametros direccion fuente, direccion destino y cantidad de bytes a copiar respectivamente.
+	A continuación saca los argumentos pasados desde los programas C de la pila (tener en cuenta que por motivos historicos los compiladores de C meten los registros en orden inverso en la pila). Usa PC_ARGS ya que previamente ha salvado los valores de tres registros de 32 bits (4 bytes) en la pila, y usa ese valor de 16 para saltarlos y poder direccionar los argumentos reales.
 
 	cmp eax, 10 
 	jb pc_small
 
-	Realiza una comparacion de el numero de bytes a copiar con 10 esto es un valor empirico, que indica que por debajo de esta cantidad no es rentable realizar el proceso intentando copiar palabra a palabra, sino que es mas eficiente la copia byte a byte.
+	Realiza una comparacion de el numero de bytes a copiar con 10 esto es un valor empirico, que indica que por debajo de este valor se perdería tiempo intentando alinear el origen, por lo que se hace directamente el transaldo byte a byte. Si es mayor que 10 entonces primero determina cuantos bytes debe "quitar" para quede un numero par de bytes, los mueve y despues mueve todos los que puede de los restantes de 32 bits en 32 bits, en vez de cada 8 (sabe cuantos puede mover porque divide el numero de bytes restante entre 4 despanzado 2 bits hacia la derecha) y finaliza moviendo de nuevo byte ...(line truncated)...
 
 	mov ecx, esi
 	neg ecx
@@ -350,16 +353,10 @@ Seguimiento completo de una llamada fork();
 	eseg movsb 
 	mov ecx, eax
 
-	En caso de que la cantidad de bytes a copiar sea superior a diez realizara la copia palabra a palabra, para esto lo primero es alinear la fuente y definir un contador para el alineamiento utilizara la instruccion "rep" para repetir la instruccion que hay inmediatamente debajo tantas veces como indica el registro ecx. Tras esto quedara en ecx el resto de los bytes que quedan por copiar.
-
 	shr ecx, 2 
 	rep
 	eseg movs
 	and eax, 3
-
-	Si dividimos el valor de ecx entre 4 obtendremos el numero de palabras a copiar, utilizara de nuevo la instruccion "rep" para copiar las palabras una vez hecho esto realizara un and con 3 para despues dejar en el registro ecx el numero de bytes que faltan por copiar de la ultima palabra.
-
-	A continuacion entrara en pc_small donde se realizara la copia de los ultimos bytes despues de esto se recuperan los valores de la pila que habiamos salvado en el inicio y termina.
 
 	pc_small:
 		xchg ecx, eax 
@@ -376,18 +373,27 @@ Seguimiento completo de una llamada fork();
 
 	Una vez escrito el codigo decidimos compilar el nucleo de minix, como no podia ser de otra manera el compilador notifico varios errores en el codigo que acababamos de escribir, tras pararnos a reflexionar unos minutos nos dimos cuenta que nuestra rutina no podia estar escrita en alloc.c dado que este archivo no tiene importada la estructura "mproc", la cual es fundamental para acceder a la tabla de segmentos del proceso y por lo tanto a las direcciones de estos, decidimos por lo tanto reescribir la funcion en un fichero que si que tenga importada la estructura "mproc", el archivo que elgimos en esta ocasion es "utility.c", nos decantamos por reescribir la funcion en este archivo ya que estabamos acostumrados a trabaar con el en practicas anteriores y por supuesto sabiamos que tenia importada la estructura que necesitabamos.
 
-	Tras reubicar la rutina en "utility.c" y compilar el nucleo pudimos comprobar su funcionamiento, que efectivamente habiamos conseguido mover el segmento de datos de todos procesos a una zona de memoria diferente, esto pudimos comprobarlo gracias al comando que habiamos creado en una practica anterior el cual nos permitia ver los segmentos de los diferentes porcesos de usuario en memoria en un momento dado, pero habia algo que no funcionaba correctamente ya que una vez realizado la reubicacion de los segmantos de datos el sistema comenzaba a degradarse hasta el punto de dejar de funcionar por completo, tras unas cuantas pruebas nos dimos cuenta que estabamos abordando el problema de una forma demasiado brusca y decidimos modificar la rutina para que en vez de mover el segmento de datos de todos los procesos de usuario, moviese soloamente el segmento de datos del proceso que nosotros le indicasemos a traves del PID del proceso "victima", tras hablar con el profesor decidimos hacer las pruebas con un pequeño programa de calculo de primos que imprimia puntos en pantalla a medida que calcula los numeros. Como era de esperar tras realizar la operacion sobre este proceso el proceso terminaba su ejecucion.
+	Tras reubicar la rutina en "utility.c" y compilar el nucleo pudimos comprobar su funcionamiento. Efectivamente habiamos conseguido mover el segmento de datos de todos procesos a una zona de memoria diferente. Esto pudimos comprobarlo gracias al comando que habiamos creado en una practica anterior, el cual nos permitia ver los segmentos de los diferentes porcesos de usuario en memoria en un momento dado. Pero habia algo que no funcionaba correctamente ya que una vez realizado la reubicacion de los segmantos de datos el sistema comenzaba a degradarse hasta el punto de dejar de funcionar por completo. 
+	Tras unas cuantas pruebas nos dimos cuenta que estabamos abordando el problema de una forma demasiado brusca y decidimos modificar la rutina para que en vez de mover el segmento de datos de todos los procesos de usuario, moviese soloamente el segmento de datos del proceso que nosotros le indicasemos a traves del PID del proceso "victima", tras hablar con el profesor decidimos hacer las pruebas con un pequeño programa de calculo de primos que imprimia puntos en pantalla a medida que calcula los numeros. Como era de esperar tras realizar la operacion sobre este proceso el proceso terminaba su ejecucion.
 
 	Decidimos estudiar mas en profundidad la gestion de memoria de minix y como estaban organizados los segmentos de los procesos en memoria, una vez habiamos estudiado todo lo necesario nos dimos cuenta de un fallo importante: 
 
-		En minix la tabla de segmentos tiene 3 entradas una para cada segmento del proceso(Datos, Texto y Pila), pero en memoria esto no es exactamente igual ya que para los tres segmentos cada proceso tiene dos huecos de memoria asignados, un hueco para el segmento de texto y otro hueco que se comparte entre el segmento de datos y el de pila, asi como un espacio extra(gap) que permite a estos dos ultimos crecer durante la ejecucion. Por lo tanto decidimos volver a modificar el codigo pero esta vez desplazando el segmento de datos y pila como una unica zona de memoria. 
-		Dado que el proceso que ibamos a mover en las pruebas tenia texto y datos juntos es decir no habia dos zonas de memoria separadas para el texto y los datos decidimos calcular las direcciones de manera que pudiesemos mover todos los segmentos como un unico boque.
+		En minix los procesos tienen tres segmentos(Texto, Datos y Pila), los cuales se cargan en memoria fisica para que el proceso pueda ejecutarse. Estos tres segmentos se cargan contiguamente en memoria, a excepcion del segmento de texto, que puede estar en una zona de memoria diferente para permitir la comparticion de texto entre proceso. Esto es asi por seguridad, ya que si estuviese almacenado de forma contigua se podria introdcir "codigo malicioso" en el segmento de datos.
 
-	Tuvimos un problema a la hora de realizar los calculos de las direcciones para que fuesen correctos, el cual fue fue no calcular correctamente el espacio total del proceso:
+		Dado que el proceso que ibamos a utilizar en las pruebas no tenia texto compartido, sus segmentos se cargarian de forma contigua en memoria. Por lo tanto decidimos calcular las direcciones de manera que pudiesemos mover todos los segmentos como un unico bloque.
+
+	Tuvimos un problema a la hora de realizar los calculos de las direcciones para que fuesen correctos, el problema fue no calcular correctamente el espacio total del proceso:
 
 		·Para calcular el espacio total del proceso valdria con restar la direccion fisica del segmento de datos con la direccion fisica del segmento de pila, esa fue la operacion que realizamos en un principio, tras un poco de reflexion y el estudio de la funcion "do_fork", nos dimos cuenta que se nos olvidaba algo importante.
 
+			lenght_proc_click = (phys clicks) (mp->mp_seg[S].mem_vir - mp->mp_seg[D].mem_vir);
+ 
 		·Para calcular correctamente el espacio total debeiamos restar la direccion fisica del segmento de datos y del segmento de pila, pero tambien debiamos tener en cuenta el tamaño actual de la pila en ese momento ya que la direccion fisica del segmento de datos comienza en el punto donde comienzan los datos, pero la direccion de la pila apunta a la ultima direccion de la pila(que crece hacia arriba), por lo tanto debiamos sumar el tamaño de la pila en el momento de realizar la reubicacion.
+
+			lenght_proc_click = (phys clicks) mp->mp_seg[S].mem_len;
+			lenght_proc_click += (phys clicks) (mp->mp_seg[S].mem_vir - mp->mp_seg[D].mem_vir);
+
+			Con esto obtendiramos el tamaño total de la memoria asiganada a nuestro proceso "victima".
 
 
 	Ya que lo teniamos todo claro y un nuevo codigo decidimos repetir las pruebas, en esta ocasion los resultados fueron satisfactorios en un principio ya que despues de lanzar el proceso "victima"(que calculaba numeros primos e imprimia puntos en pantalla), logramos moverlo a una zona diferente de memoria y que continuase con su ejecucucion, tras realizar unas cuantas pruebas nos dimos cuenta que tras este triunfo habia un "pero", el problema que surgio era que tras mover el proceso y este seguir ejecutando al crear un nuevo proceso de usuario el primero terminaba su ejecucion, nos sorprendio que este fallo provocara una terminacion tan "amigable" del proceso ya que en la mayoria de las ocasiones no notificaba ningun error en la ejecucion.
@@ -404,5 +410,23 @@ Seguimiento completo de una llamada fork();
 			-Tras mucho tiempo pensando y dandole vueltas llegamos a la conclusion de que habia algun detalle que se nos escapaba o que no entendiamos bien, para intentar solucionarlo decidimos volver a estudiar la gestion de memoria a traves del libo: "Sistemas operativos: Diseño e implementacion", ademas de estudiar en profundidad las funciones FORK y EXEC.
 
 	Una vez con todos los conceptos claros no encontrabamos explicacion a nuestro problema, por lo tanto decidimos seguir estudiando para intentar dar con la solucion en un futuro cercano.
+
+	Pasemos a comentar como tratamos el caso de un proceso con el segmento de texto compartido:
+
+		Lo primero que hacemos es comparar el mp_flags del proceso con la mascara SEPARATE. En caso de dar "TRUE" lo que hecemos es recorrer todos los procesos del PCB tanto del kernel como del gestor de memoria, comprobando si el segmento de texto de cada proceso en concreto tiene la misma direccion fisica que el segmento de texto del proceso sobre el que realizamos la reubicacion. En caso de tener la misma cambiamos su direccion por la nueva que le hemos asignado.
+
+
+	Para finalizar explicaremos unos detalles interesantes del codigo:
+
+		src_click = mp->mp_seg[D].mem_phys;
+		src_abs = (phys_bytes) src_click << CLICK_SHIFT;
+		dst_click = alloc_mem("tamaño de la memoria asignada al proceso");
+		dst_abs = (phys_bytes) dst_click << CLICK_SHIFT;
+
+		· Calculamos las direcciones en dos unidades diferentes(clicks y bytes), ya que necesitaremos ambas formas para paso de parametros, asignaciones...etc. Para la conversion desplazamos los valores, utilizando la constante CLICK_SHIFT(que tiene un valor de 8 que es log(256) en base 2)
+
+
+
+	Finalmente decidimos realizar una refactorizacion del codigo, ya que habiamos escrito todo en una misma funcion, y asi hacerlo mas legible y de mejor calidad.
 
 	Cabe destacar que gran parte del codigo que hemos escrito ha sido corregido a partir del estudio de las funciones FORK y EXEC de minix.
